@@ -28,13 +28,18 @@ import org.apache.zookeeper.KeeperException.Code;
 //		Ideally, Watches & CallBacks should only be used to assign the "work" to a separate thread inside your program.
 public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, AsyncCallback.StatCallback { // ,
                                                                                                           // AsyncCallback.StatCallback
-    ZooKeeper zk;
+    public static final String ANSI_RESET = "\u001B[0m";
+	public static final String ANSI_RED = "\u001B[31m";
+	public static final String ANSI_YELLOW = "\u001B[33m";
+	public static final String ANSI_BLUE = "\u001B[34m";
+	ZooKeeper zk;
     String zkServer, pinfo;
     boolean isMaster = false;
     boolean idle = false;
 
     Queue<String> task_queue = new LinkedList<String>();
     HashMap<String, Boolean> workers_status = new HashMap<String, Boolean>();
+	HashSet<String> visited_children = new HashSet<String>();
 
     DistProcess(String zkhost) {
         zkServer = zkhost;
@@ -172,7 +177,7 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
                 // we
                 // called
                 // exists on the result znode immediately after creating the task znode.
-                System.out.println("DISTAPP : processResult : StatCallback : " + Code.get(rc));
+                printYellow("DISTAPP : processResult : StatCallback : " + Code.get(rc));
                 // zk.exists(taskNodeName + "/result", this, null, null);
                 System.out.println("Path: " + path);
                 System.out.println("NO NODE NO NODE");
@@ -184,21 +189,22 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
                 String worker_id = tokens[3];
 
                 workers_status.put(worker_id, true);
-                System.out.print(workers_status);
-                System.out.println(worker_id + " is back to idle");
+                printBlue(workers_status.toString());
+                printBlue(worker_id + " is back to idle");
 
                 if (!task_queue.isEmpty()) {
-                    String task_id = task_queue.peek();
-                    System.out.println("Assigning queuing task: " + task_id + " to worker " + worker_id);
+                    String task_id = task_queue.poll();
+                    printBlue("Assigning queuing task: " + task_id + " to worker " + worker_id);
                     workers_status.put(worker_id, false);
                     // get the task object
                     try {
                         byte[] taskSerial = zk.getData("/dist24/tasks/" + task_id, false, null);
-                        System.out.println("after getting available worker node: " + worker_id);
+                        printBlue("after getting available worker node: " + worker_id);
                         // create a task object under the idle worker
                         zk.create("/dist24/workers/" + worker_id + "/" + task_id, taskSerial, Ids.OPEN_ACL_UNSAFE,
                                 CreateMode.PERSISTENT);
                         zk.exists("/dist24/workers/" + worker_id + "/" + task_id, this, this, null);
+						visited_children.add(task_id);
                     } catch (NodeExistsException nee) {
                         System.out.println(nee);
                     } catch (KeeperException ke) {
@@ -207,6 +213,7 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
                         System.out.println(ie);
                     }
                 }
+				printYellow("NO NODE HANDLED");
                 break;
             default:
                 System.out.println("DISTAPP : processResult : StatCallback : " + Code.get(rc));
@@ -226,7 +233,7 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
                 return id;
             }
         }
-        System.out.println("no worker available");
+        printRed("no worker available");
         return id;
     }
 
@@ -253,9 +260,13 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
         // System.out.println("LOG : callback called by : " + pinfo + "; " + "Path: " +
         // path);
         for (String c : children) {
+			if(visited_children.contains(c)){
+				printRed("Children " + c + " has been handled before.");
+				continue;
+			}
             String whoami = (isMaster) ? "Master" : ("worker_" + pinfo);
 
-            System.out.println(whoami + " is awared of changes in: " + path + "; " + c);
+            printYellow(whoami + " is awared of changes in: " + path + "; " + c);
             try {
                 // TODO There is quite a bit of worker specific activities here,
                 // that should be moved done by a process function as the worker.
@@ -264,38 +275,41 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
                 // /dist24/workers/worker-111@lab2-11/task-finish
 
                 if ("/dist24/workers".equals(path)) { // If a new worker node is created (callback by master)
-                    System.out.println("New worker: " + c);
-                    System.out.println("NEW WORKER");
+                    printYellow("---------------------- NEW WORKER ----------------------");
+					System.out.println("New worker: " + c);
                     // add the worker to the master's record
                     workers_status.put(c, true);
-
+					visited_children.add(c);
+					printYellow("NEW WORKER -- DONE");
                 } else if ("/dist24/tasks".equals(path)) { // If a task node is submitted (callback by master)
-                    System.out.println("NEW TASK SUBMITTED");
+                    printYellow("---------------------- NEW TASK ----------------------");
                     // find the idle worker
                     String worker_id = getIdleWorker(workers_status);
 
                     if (worker_id.equals("")) { // no available worker right now
                         task_queue.add(c); // add the task into the task queue
-                        System.out.println("Adding " + c + " into the task queue");
-
+                        printBlue("Adding " + c + " into the task queue");
+						printYellow("NEW TASK PUT IN QUEUE");
                         // thread :
 
                     } else {
                         workers_status.put(worker_id, false);
                         // get the task object
                         byte[] taskSerial = zk.getData("/dist24/tasks/" + c, false, null);
-                        System.out.println("Found an idle worker : " + worker_id);
+                        printBlue("Found an idle worker : " + worker_id);
                         // create a task object under the idle worker
                         System.out.println("Assigning " + c + " to worker " + worker_id);
                         zk.create("/dist24/workers/" + worker_id + "/" + c, taskSerial, Ids.OPEN_ACL_UNSAFE,
                                 CreateMode.PERSISTENT);
                         zk.exists("/dist24/workers/" + worker_id + "/" + c, this, this, null);
+						visited_children.add(c);
+						printYellow("NEW TASK DONE");
                     }
                     // /dist24/workers/worker-111@lab2-11
                 } else if (("/dist24/workers/worker_" + pinfo).equals(path)) { // If a task node assigned to a worker
                                                                                // (callback by worker)
-                    System.out.println("WORKER GETS NEW TASK");
-                    System.out.println("LOG : Worker: " + pinfo + " gets a new task");
+                    printYellow("---------------------- WORKER GETS NEW TASK ----------------------");
+                    printBlue("LOG : Worker: " + pinfo + " gets a new task " + c);
                     byte[] taskSerial = zk.getData("/dist24/workers/worker_" + pinfo + "/" + c, false, null);
                     ByteArrayInputStream bis_worker = new ByteArrayInputStream(taskSerial);
                     ObjectInput in_worker = new ObjectInputStream(bis_worker);
@@ -310,10 +324,10 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
                     // clean up task node under the worker
 
                     zk.delete("/dist24/workers/worker_" + pinfo + "/" + c, -1, null, this);
-
+					printYellow("WORKER DONE WITH TASK");
                 } else {
-                    System.out.println("DISTAPP : processResult : getChildrenCallback : " + Code.get(rc));
-                }
+                    printYellow("DISTAPP : processResult : getChildrenCallback : " + Code.get(rc));
+				}
             } catch (NodeExistsException nee) {
                 System.out.println(nee);
             } catch (KeeperException ke) {
@@ -327,6 +341,18 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback, Asy
             }
         }
     }
+
+	public void printBlue(String str){
+		System.out.println(ANSI_BLUE + str + ANSI_RESET);
+	}
+
+	public void printYellow(String str){
+		System.out.println(ANSI_YELLOW + str + ANSI_RESET);
+	}
+
+	public void printRed(String str){
+		System.out.println(ANSI_RED + str + ANSI_RESET);
+	}
 
     public static void main(String args[]) throws Exception {
         // Create a new process
