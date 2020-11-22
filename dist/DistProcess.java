@@ -47,15 +47,16 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
     public String getIdleWorker(ConcurrentHashMap<String, String> map) {
         String id = "";
         Iterator it = map.entrySet().iterator();
+        printBlue("[Master worker_status]: " + workers_status);
         while (it.hasNext()) {
             Map.Entry pair = (Map.Entry) it.next();
-            System.out.println(pair.getKey() + " = " + pair.getValue());
             if (pair.getValue().equals("idle")) {
                 id = (String) pair.getKey();
+                printBlue("[Master getIdleWorker]: Master found an idle worker : " + workers_status);
                 return id;
             }
         }
-        printRed("no worker available");
+        printRed("[Master getIdleWorker] : No worker available");
         return id;
     }
 
@@ -75,7 +76,8 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
     Watcher newTaskWatcher = new Watcher() {
         public void process(WatchedEvent e) {
             if (e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist24/tasks")) {
-                printRed("[Master newTaskWatcher]: master is notified by a new task submitted");
+                // printRed("[Master newTaskWatcher]: master is notified by a new task
+                // submitted");
                 getNewlySubmittedTasks();
             }
         }
@@ -116,7 +118,8 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
                         System.out.println(ie);
                     }
                 } else {
-                    printRed("[Master newTaskCallBack]: " + c + " is already in the master task list");
+                    // printRed("[Master newTaskCallBack]: " + c + " is already in the master task
+                    // list");
                 }
             }
         }
