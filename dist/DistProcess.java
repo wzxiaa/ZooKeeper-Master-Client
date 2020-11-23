@@ -187,6 +187,22 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
                     printRed("[Master newWorkerCallBack]: master finds a new WORKER: " + c);
                     workers_status.put(c, "idle");
                     printRed("[Master newWorkerCallBack]: master registers the new WORKER: " + c);
+                    if (task_queue.size() > 0) {
+                        String awaiting_task = task_queue.poll();
+                        workers_status.put(c, awaiting_task);
+                        try {
+                            byte[] taskSerial = zk.getData("/dist24/tasks/" + awaiting_task, false, null);
+                            assignTask(c, awaiting_task, taskSerial);
+                            watchOnAssignedWorkerTask(c, awaiting_task);
+                        } catch (NodeExistsException nee) {
+                            System.out.println(nee);
+                        } catch (KeeperException ke) {
+                            System.out.println(ke);
+                        } catch (InterruptedException ie) {
+                            System.out.println(ie);
+                        }
+                    }
+
                 } else {
                     printRed("[Master newTaskCallBack]: " + c + " is already in the master task list");
                 }
