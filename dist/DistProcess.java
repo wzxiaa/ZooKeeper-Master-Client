@@ -139,9 +139,9 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
         public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
             String[] tokens = path.split("/");
             String worker_id = tokens[3];
-            //String task_id = tokens[4];
+            // String task_id = tokens[4];
             String taskAssigned = new String(data, StandardCharsets.UTF_8);
-            if(taskAssigned.equals("idle")){
+            if (taskAssigned.equals("idle")) {
                 printBlue("[Matser workerTaskFinishedCallBack]: Master detects " + worker_id + " finished a task");
                 workers_status.put(worker_id, "idle");
                 if (task_queue.size() > 0) {
@@ -212,6 +212,8 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
     }
 
     void createWorker(String worker_name) {
+        // String status = "idle";
+        // Byte[] status_byte = status.getBytes();
         zk.create("/dist24/workers/worker_" + worker_name, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL,
                 createWorkerCallback, null);
     }
@@ -248,13 +250,13 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
 
     AsyncCallback.DataCallback newWorkerTaskCallBack = new AsyncCallback.DataCallback() {
         public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
-            if(data != null && data.length > 0){
+            if (data != null && data.length > 0) {
                 String task_id = new String(data, StandardCharsets.UTF_8);
-                if(!task_id.equals("idle")){
+                if (!task_id.equals("idle")) {
                     printYellow("---------------------- NEW TASK [WORKER] ----------------------");
-                    
+
                     printRed("[Worker newWorkerTaskCallBack]: worker is assigned a new TASK: " + task_id);
-                // visited_children.add(c);
+                    // visited_children.add(c);
                     new Thread(new WorkerRunnable(pinfo, task_id)).start();
                 }
             }
@@ -288,10 +290,11 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
                 oos_worker.writeObject(dt_worker);
                 oos_worker.flush();
                 taskSerial = bos_worker.toByteArray();
-                zk.create("/dist24/tasks/" + task_id + "/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                zk.create("/dist24/tasks/" + task_id + "/result", taskSerial, Ids.OPEN_ACL_UNSAFE,
+                        CreateMode.PERSISTENT);
                 zk.setData("/dist24/workers/worker_" + worker_id, "idle".getBytes(), -1);
-               // printYellow("WORKER DONE WITH TASK " + task_id);
-               printYellow("WORKER DONE WITH TASK ");
+                // printYellow("WORKER DONE WITH TASK " + task_id);
+                printYellow("WORKER DONE WITH TASK ");
             } catch (NodeExistsException nee) {
                 System.out.println(nee);
             } catch (KeeperException ke) {
@@ -308,23 +311,50 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
 
     // Assigning task to worker
     void assignTask(String worker_id, String task_id, byte[] taskSerial) {
-        zk.setData("/dist24/workers/" + worker_id , task_id.getBytes(), -1, createWorkerTaskCallback, null);
+        zk.setData("/dist24/workers/" + worker_id, task_id.getBytes(), -1,
+                new createWorkerTaskCallback(task_id, worker_id), null);
     }
 
-    AsyncCallback.StatCallback createWorkerTaskCallback = new AsyncCallback.StatCallback() {
-        public void processResult(int rc, String path, Object ctx, Stat stat){
+    class createWorkerTaskCallback implements AsyncCallback.StatCallback {
+        private String task_id;
+        private String worker_id;
+
+        public createWorkerTaskCallback(String task_id, String worker_id) {
+            this.task_id = task_id;
+            this.worker_id = worker_id;
+        }
+
+        public void processResult(int rc, String path, Object ctx, Stat stat) {
             switch (Code.get(rc)) {
                 case OK:
-                    printRed("[" + stat + "]: Task assigned successfully");
+                    printRed(
+                            "[Master createWorkerTaskCallback]: " + task_id + " assigned successfully to " + worker_id);
                     break;
                 case NODEEXISTS:
-                    printRed("[" + stat + "]: Task Already assigned");
+                    printRed("[Master createWorkerTaskCallback]: Task Already assigned");
                     break;
                 default:
                     printRed("Something went wrong: " + KeeperException.create(Code.get(rc), path));
             }
         }
-    };
+    }
+
+    // AsyncCallback.StatCallback createWorkerTaskCallback = new
+    // AsyncCallback.StatCallback() {
+    // public void processResult(int rc, String path, Object ctx, Stat stat) {
+    // switch (Code.get(rc)) {
+    // case OK:
+    // printRed("[" + stat + "]: Task assigned successfully");
+    // break;
+    // case NODEEXISTS:
+    // printRed("[" + stat + "]: Task Already assigned");
+    // break;
+    // default:
+    // printRed("Something went wrong: " + KeeperException.create(Code.get(rc),
+    // path));
+    // }
+    // }
+    // };
 
     DistProcess(String zkhost) {
         zkServer = zkhost;
