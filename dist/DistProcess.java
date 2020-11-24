@@ -53,11 +53,11 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
             Map.Entry pair = (Map.Entry) it.next();
             if (pair.getValue().equals("idle")) {
                 id = (String) pair.getKey();
-                printBlue("[Master getIdleWorker]: Master found an idle worker : " + workers_status);
+                printBlue("[Master getIdleWorker]: MASTER found an idle worker : " + id + "from:\n" + workers_status);
                 return id;
             }
         }
-        printRed("[Master getIdleWorker] : No worker available");
+        printRed("[Master getIdleWorker] : No idle WORKER available");
         return id;
     }
 
@@ -89,7 +89,7 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
             for (String c : children) {
                 if (!visited_children.contains(c)) {
                     printYellow("---------------------- NEW TASK [Master] ----------------------");
-                    printRed("[Master newTaskCallBack]: master finds a new TASK submitted: " + c);
+                    printRed("[Master newTaskCallBack]: MASTER finds a new TASK submitted: " + c);
                     visited_children.add(c);
                     String worker_id = getIdleWorker(workers_status);
                     try {
@@ -98,10 +98,10 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
                             // worker
                             // right
                             // now
-                            printBlue("[Master newTaskCallBack]: no idle worker available right now");
+                            printBlue("[Master newTaskCallBack]: No idle worker available right now");
                             task_queue.add(c); // add the task into
                                                // the task queue
-                            printBlue("[Master newTaskCallBack]: Adding " + c + " into the task queue");
+                            printBlue("[Master newTaskCallBack]: MASTER adding " + c + " into the task queue");
                             byte[] taskSerial = zk.getData("/dist24/tasks/" + c, false, null);
                             // assignTask(worker_id, c, taskSerial);
 
@@ -142,7 +142,7 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
             // String task_id = tokens[4];
             String taskAssigned = new String(data, StandardCharsets.UTF_8);
             if (taskAssigned.equals("idle")) {
-                printBlue("[Matser workerTaskFinishedCallBack]: Master detects " + worker_id + " finished a task");
+                printBlue("[Matser workerTaskFinishedCallBack]: MASTER detects " + worker_id + " finished its task");
                 workers_status.put(worker_id, "idle");
                 if (task_queue.size() > 0) {
                     String awaiting_task = task_queue.poll();
@@ -169,7 +169,7 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
     Watcher newWorkerWatcher = new Watcher() {
         public void process(WatchedEvent e) {
             if (e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist24/workers")) {
-                printRed("[Master newWorkerWatcher]: master is notified by a new WORKER submitted");
+                printRed("[Master newWorkerWatcher]: MASTER is notified by a node change under WORKERS");
                 getNewWorker();
             }
         }
@@ -180,9 +180,9 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
             for (String c : children) {
                 if (!workers_status.containsKey(c)) {
                     printYellow("---------------------- NEW WORKER [Master] ----------------------");
-                    printRed("[Master newWorkerCallBack]: master finds a new WORKER: " + c);
+                    printRed("[Master newWorkerCallBack]: MASTER finds a new WORKER: " + c);
                     workers_status.put(c, "idle");
-                    printRed("[Master newWorkerCallBack]: master registers the new WORKER: " + c);
+                    printRed("[Master newWorkerCallBack]: MASTER registers the new WORKER: " + c);
                     if (task_queue.size() > 0) {
                         String awaiting_task = task_queue.poll();
                         workers_status.put(c, awaiting_task);
@@ -199,8 +199,16 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
                         }
                     }
 
-                } else {
-                    printRed("[Master newTaskCallBack]: " + c + " is already in the master task list");
+                }
+            }
+            Iterator it = workers_status.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry pair = (Map.Entry) it.next();
+                String worker_id = (String) pair.getKey();
+                if (!children.contains(worker_id)) {
+                    printBlue("[Master] : MASTER detects " + worker_id + " has been removed");
+                    workers_status.remove(worker_id);
+                    printBlue("[Master] : MASTER deregistering " + worker_id + " from the system");
                 }
             }
         }
@@ -278,7 +286,8 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
 
         private void workerCompute(String worker_id, String task_id) {
             try {
-                printBlue("Worker executing TASK " + task_id + " on a new THREAD: " + Thread.currentThread().getId());
+                printBlue("WORKER " + worker_id + " starts executing TASK " + task_id + " on a new THREAD: "
+                        + Thread.currentThread().getId());
                 byte[] taskSerial = zk.getData("/dist24/tasks/" + task_id, false, null);
                 ByteArrayInputStream bis_worker = new ByteArrayInputStream(taskSerial);
                 ObjectInput in_worker = new ObjectInputStream(bis_worker);
@@ -294,7 +303,7 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
                         CreateMode.PERSISTENT);
                 zk.setData("/dist24/workers/worker_" + worker_id, "idle".getBytes(), -1);
                 // printYellow("WORKER DONE WITH TASK " + task_id);
-                printYellow("WORKER DONE WITH TASK ");
+                printYellow("WORKER " + worker_id + " DONE WITH " + task_id);
             } catch (NodeExistsException nee) {
                 System.out.println(nee);
             } catch (KeeperException ke) {
@@ -339,23 +348,6 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
         }
     }
 
-    // AsyncCallback.StatCallback createWorkerTaskCallback = new
-    // AsyncCallback.StatCallback() {
-    // public void processResult(int rc, String path, Object ctx, Stat stat) {
-    // switch (Code.get(rc)) {
-    // case OK:
-    // printRed("[" + stat + "]: Task assigned successfully");
-    // break;
-    // case NODEEXISTS:
-    // printRed("[" + stat + "]: Task Already assigned");
-    // break;
-    // default:
-    // printRed("Something went wrong: " + KeeperException.create(Code.get(rc),
-    // path));
-    // }
-    // }
-    // };
-
     DistProcess(String zkhost) {
         zkServer = zkhost;
         pinfo = ManagementFactory.getRuntimeMXBean().getName();
@@ -396,29 +388,6 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
         zk.create("/dist24/master", pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
     }
 
-    public void process(WatchedEvent e) {
-        // Get watcher notifications.
-
-        // !! IMPORTANT !!
-        // Do not perform any time consuming/waiting steps here
-        // including in other functions called from here.
-        // Your will be essentially holding up ZK client library
-        // thread and you will not get other notifications.
-        // Instead include another thread in your program logic that
-        // does the time consuming "work" and notify that thread from here.
-    }
-
-    // Implementing the AsyncCallback.StatCallback interface. This will be
-    // invoked
-    // by the zk.exists
-    public void processResult(int rc, String path, Object ctx, Stat stat) {
-
-    }
-
-    // Asynchronous callback that is invoked by the zk.getChildren request.
-    public void processResult(int rc, String path, Object ctx, List<String> children) {
-    }
-
     public static void main(String args[]) throws Exception {
         // Create a new process
         // Read the ZooKeeper ensemble information from the environment variable.
@@ -427,9 +396,8 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
 
         // Replace this with an approach that will make sure that the process is up and
         // running forever.
-        while (true) {
-
-        }
+        while (true)
+            ;
         // Thread.sleep(10000);
     }
 }
