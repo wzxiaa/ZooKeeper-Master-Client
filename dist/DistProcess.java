@@ -35,11 +35,11 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
     public static final String ANSI_RED = "\u001B[31m";
     public static final String ANSI_YELLOW = "\u001B[33m";
     public static final String ANSI_BLUE = "\u001B[34m";
+    public static final String ANSI_GREEN = "\u001B[32m";
 
     ZooKeeper zk;
     String zkServer, pinfo;
     boolean isMaster = false;
-    boolean idle = false;
 
     ConcurrentLinkedQueue<String> task_queue = new ConcurrentLinkedQueue<String>();
     ConcurrentHashMap<String, String> workers_status = new ConcurrentHashMap<String, String>();
@@ -48,17 +48,30 @@ public class DistProcess { // implements Watcher, AsyncCallback.ChildrenCallback
     public String getIdleWorker(ConcurrentHashMap<String, String> map) {
         String id = "";
         Iterator it = map.entrySet().iterator();
-        printBlue("[Master worker_status]: " + workers_status);
+        printGreen("[Master worker_status]: \n" + printHashMap(workers_status));
         while (it.hasNext()) {
             Map.Entry pair = (Map.Entry) it.next();
             if (pair.getValue().equals("idle")) {
                 id = (String) pair.getKey();
-                printBlue("[Master getIdleWorker]: MASTER found an idle worker : " + id + "from:\n" + workers_status);
+                printBlue("[Master getIdleWorker]: MASTER found an idle worker : " + id);
                 return id;
             }
         }
         printRed("[Master getIdleWorker] : No idle WORKER available");
         return id;
+    }
+
+    public String printHashMap(ConcurrentHashMap<String, String> workers_status) {
+        String s = "";
+        for (String key : workers_status.keySet()) {
+            String value = workers_status.get(key).toString();
+            s = s + "[ " + key + " ]:" + value + "\n";
+        }
+        return s;
+    }
+
+    public void printGreen(String str) {
+        System.out.println(ANSI_GREEN + str + ANSI_RESET);
     }
 
     public void printBlue(String str) {
